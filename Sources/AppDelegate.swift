@@ -1,5 +1,10 @@
 import AppKit
 
+// Font family taken verbatim from Ghostty's `font-family` setting.
+private let lockedFontFamily = "Cousine Nerd Font Mono"
+// Point size for the `locked` label.
+private let lockedFontSize: CGFloat = 36
+
 /// Escape hatches are only suppressed while Lockr is frontmost, which it stays.
 private let lockedPresentationOptions: NSApplication.PresentationOptions = [
     .disableProcessSwitching,
@@ -111,7 +116,8 @@ private final class CurtainView: NSView {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         let text = NSAttributedString(string: "locked", attributes: [
-            .font: NSFont.systemFont(ofSize: 72, weight: .light),
+            .font: NSFont(name: lockedFontFamily, size: lockedFontSize)
+                ?? NSFont.monospacedSystemFont(ofSize: lockedFontSize, weight: .light),
             .foregroundColor: NSColor(white: 0.6, alpha: 1),
             .paragraphStyle: paragraph,
         ])
