@@ -25,8 +25,6 @@ final class PasswordAuthenticator {
 /// the responder chain or are fed in from the event tap.
 final class PasswordFieldView: NSView {
     var onSubmit: ((String) -> Void)?
-    /// First keystroke after a submitted attempt; used to dismiss the Touch ID sheet.
-    var onUserTyping: (() -> Void)?
 
     // Plaintext buffer. Kept as UTF-8 bytes so it can be overwritten when cleared.
     private var typed: [UInt8] = []
@@ -83,7 +81,6 @@ final class PasswordFieldView: NSView {
             typed.append(contentsOf: characters.utf8)
             typedCount += 1
             needsDisplay = true
-            onUserTyping?()
         }
     }
 

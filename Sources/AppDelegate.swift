@@ -20,6 +20,9 @@ let shakeDuration: CFTimeInterval = 0.3
 let blockingWarning = "accessibility permission missing - input not blocked"
 let warningFontSize: CGFloat = 11
 let warningColor = NSColor(srgbRed: 0.85, green: 0.35, blue: 0.35, alpha: 1)
+// Dim hint under the password field when Touch ID cannot be used.
+let hintFontSize: CGFloat = 11
+let hintColor = lockedTextColor.withAlphaComponent(0.4)
 
 /// Escape hatches are only suppressed while Lockr is frontmost, which it stays.
 let lockedPresentationOptions: NSApplication.PresentationOptions = [
@@ -40,12 +43,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let passwordAuthenticator = PasswordAuthenticator()
     private var authInProgress = false
     private var isShuttingDown = false
-    private let testSeconds: Double?
-
-    init(testSeconds: Double?) {
-        self.testSeconds = testSeconds
-        super.init()
-    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Multi-display hotplug is not handled: cover the screens present at launch.
@@ -53,7 +50,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for screen in NSScreen.screens {
             let window = CurtainWindow(screen: screen, showBlockingWarning: !trustedForAccessibility)
             window.onSubmitPassword = { [weak self] password in self?.verifyPassword(password) }
-            window.onUserTyping = { [weak self] in self?.authenticator.cancelPendingBiometrics() }
             windows.append(window)
         }
 
@@ -76,18 +72,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             debugLog("WARNING: enable Lockr under System Settings > Privacy & Security > Accessibility.")
         }
 
-        // Touch ID is attempted once, at lock time; password typing is the fallback.
-        if testSeconds == nil {
-            authenticator.authenticateWithBiometrics(reason: "Unlock Lockr") { [weak self] success in
-                guard let self else { return }
-                if success {
-                    debugLog("Touch ID succeeded, unlocking")
-                    self.shutDown()
-                } else {
-                    debugLog("Touch ID cancelled or failed, staying locked (type your password)")
-                }
+        // Touch ID is armed for the whole locked session and re-armed after every
+        // non-fatal outcome; password typing stays the fallback and never blocks it.
+        authenticator.onUnlock = { [weak self] in
+            debugLog("Touch ID succeeded, unlocking")
+            self?.shutDown()
+        }
+        authenticator.onStatus = { [weak self] status in
+            switch status {
+            case .lockedOut:
+                self?.showBiometricHint("touch id locked - use password")
+            case .unavailable:
+                self?.showBiometricHint("touch id unavailable - use password")
+            case .armed, .retrying:
+                break
             }
         }
+        authenticator.start(reason: "Unlock Lockr")
 
         // Focus must stay on the curtain; take it back if anything steals it.
         NotificationCenter.default.addObserver(
@@ -108,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Cursor and event tap are always restored here, whatever the exit reason.
     func shutDown() {
         isShuttingDown = true
+        authenticator.stop()
         debugLog("unlocking, restoring input and cursor")
         inputBlocker.stop()
         cursorHider.stop()
@@ -138,6 +140,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func showBiometricHint(_ text: String) {
+        for window in windows { window.setBiometricHint(text) }
+    }
+
     private func showCurtains() {
         for window in windows { window.makeKeyAndOrderFront(nil) }
         NSApp.activate()
@@ -163,11 +169,6 @@ private final class CurtainWindow: NSWindow {
         get { curtain.onSubmitPassword }
         set { curtain.onSubmitPassword = newValue }
     }
-    var onUserTyping: (() -> Void)? {
-        get { curtain.onUserTyping }
-        set { curtain.onUserTyping = newValue }
-    }
-
     private let curtain: CurtainView
 
     init(screen: NSScreen, showBlockingWarning: Bool) {
@@ -190,6 +191,10 @@ private final class CurtainWindow: NSWindow {
         curtain.rejectPassword()
     }
 
+    func setBiometricHint(_ text: String) {
+        curtain.biometricHint = text
+    }
+
     func handleKeyDown(_ event: NSEvent) {
         curtain.passwordField.keyDown(with: event)
     }
@@ -202,7 +207,10 @@ private final class CurtainWindow: NSWindow {
 private final class CurtainView: NSView {
     let passwordField = PasswordFieldView()
     var onSubmitPassword: ((String) -> Void)?
-    var onUserTyping: (() -> Void)?
+    /// Short dim line under the field when Touch ID cannot be used. Redrawn in place.
+    var biometricHint: String? {
+        didSet { needsDisplay = true }
+    }
 
     private let showBlockingWarning: Bool
 
@@ -210,7 +218,6 @@ private final class CurtainView: NSView {
         self.showBlockingWarning = showBlockingWarning
         super.init(frame: frame)
         passwordField.onSubmit = { [weak self] password in self?.onSubmitPassword?(password) }
-        passwordField.onUserTyping = { [weak self] in self?.onUserTyping?() }
         addSubview(passwordField)
     }
 
@@ -255,20 +262,30 @@ private final class CurtainView: NSView {
             height: labelHeight
         ))
 
-        guard showBlockingWarning else { return }
-        let warningFont = NSFont(name: lockedFontFamily, size: warningFontSize)
-            ?? NSFont.monospacedSystemFont(ofSize: warningFontSize, weight: .light)
-        let warning = NSAttributedString(string: blockingWarning, attributes: [
-            .font: warningFont,
-            .foregroundColor: warningColor,
-            .paragraphStyle: paragraph,
-        ])
-        warning.draw(in: NSRect(
-            x: 0,
-            y: (bounds.height - groupHeight) / 2 - passwordFieldGap - warning.size().height,
-            width: bounds.width,
-            height: warning.size().height
-        ))
+        // Optional dim lines sit under the password field, warning first.
+        var footerY = (bounds.height - groupHeight) / 2 - passwordFieldGap
+        if showBlockingWarning {
+            let warningFont = NSFont(name: lockedFontFamily, size: warningFontSize)
+                ?? NSFont.monospacedSystemFont(ofSize: warningFontSize, weight: .light)
+            let warning = NSAttributedString(string: blockingWarning, attributes: [
+                .font: warningFont,
+                .foregroundColor: warningColor,
+                .paragraphStyle: paragraph,
+            ])
+            footerY -= warning.size().height
+            warning.draw(in: NSRect(x: 0, y: footerY, width: bounds.width, height: warning.size().height))
+        }
+        if let biometricHint {
+            let hintFont = NSFont(name: lockedFontFamily, size: hintFontSize)
+                ?? NSFont.monospacedSystemFont(ofSize: hintFontSize, weight: .light)
+            let hint = NSAttributedString(string: biometricHint, attributes: [
+                .font: hintFont,
+                .foregroundColor: hintColor,
+                .paragraphStyle: paragraph,
+            ])
+            footerY -= hint.size().height + passwordFieldGap / 2
+            hint.draw(in: NSRect(x: 0, y: footerY, width: bounds.width, height: hint.size().height))
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
