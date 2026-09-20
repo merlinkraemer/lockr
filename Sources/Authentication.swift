@@ -15,9 +15,12 @@ import LocalAuthentication
 /// its own password sheet over Lockr's curtain, which would fight the typed-password
 /// field. The system panel that LocalAuthentication draws for a biometrics
 /// evaluation lives at window level 1000, far below the curtain's
-/// `CGShieldingWindowLevel()`, so it stays hidden behind the curtain. That is
-/// intentional and harmless: the sensor itself is armed either way, and a touch
-/// unlocks without a visible dialog to fight the curtain.
+/// `CGShieldingWindowLevel()`, so it stays hidden behind the curtain. Hidden is fine,
+/// but unfocused is not: the Touch ID match only runs while that panel keeps the
+/// focus. Re-activating Lockr while an evaluation is pending makes the panel report
+/// "UI lost focus" (LAError -4), and LocalAuthentication stops the match operation
+/// while the evaluation stays pending - the sensor then answers to nothing. Callers
+/// must therefore leave the focus alone for as long as `isEvaluating` is true.
 final class Authenticator {
     enum Status {
         /// An evaluation is pending or a fresh one was just armed.
@@ -33,6 +36,14 @@ final class Authenticator {
     var onUnlock: (() -> Void)?
     var onStatus: ((Status) -> Void)?
 
+    /// Called on the main thread once an evaluation has ended and its panel is gone,
+    /// so the caller may safely take the focus back.
+    var onEvaluationEnded: (() -> Void)?
+
+    /// True from just before an evaluation is handed to LocalAuthentication until its
+    /// outcome arrives (or `stop()` runs): the system panel owns the focus meanwhile.
+    private(set) var isEvaluating = false
+
     private var context: LAContext?
     private var attempt = 0
     private var running = false
@@ -46,6 +57,7 @@ final class Authenticator {
     /// Ends the current evaluation; used when the lockdown itself is ending.
     func stop() {
         running = false
+        isEvaluating = false
         attempt += 1
         context?.invalidate()
         context = nil
@@ -71,9 +83,11 @@ final class Authenticator {
             guard let self, self.running, self.attempt == attempt else { return }
             Self.logAuthPanel(attempt: attempt)
         }
+        isEvaluating = true
         context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, error in
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.running, self.attempt == attempt else { return }
+                self.isEvaluating = false
                 self.context = nil
                 if success {
                     debugLog("biometrics #\(attempt): success")
@@ -82,6 +96,7 @@ final class Authenticator {
                 }
                 let status = Self.status(for: error as NSError?)
                 debugLog("biometrics #\(attempt): ended (\(Self.describe(error as NSError?))) -> \(status)")
+                self.onEvaluationEnded?()
                 self.onStatus?(status)
                 switch status {
                 case .lockedOut, .unavailable:

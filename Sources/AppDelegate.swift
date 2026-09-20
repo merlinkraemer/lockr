@@ -53,25 +53,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             windows.append(window)
         }
 
-        caffeine.start()
-        cursorHider.start()
-        showCurtains()
-
-        if trustedForAccessibility, inputBlocker.start() {
-            inputBlocker.onKeyDown = { [weak self] event in
-                guard let self else { return }
-                if NSWorkspace.shared.frontmostApplication?.processIdentifier != getpid() {
-                    debugLog("focus lost while locked, re-activating")
-                    self.showCurtains()
-                }
-                self.windows.first?.handleKeyDown(event)
-            }
-        } else {
-            // Never fail open silently: the curtain is up but input reaches other apps.
-            debugLog("WARNING: Lockr is not trusted for Accessibility, keystrokes and clicks are NOT blocked.")
-            debugLog("WARNING: enable Lockr under System Settings > Privacy & Security > Accessibility.")
-        }
-
         // Touch ID is armed for the whole locked session and re-armed after every
         // non-fatal outcome; password typing stays the fallback and never blocks it.
         authenticator.onUnlock = { [weak self] in
@@ -88,18 +69,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 break
             }
         }
-        authenticator.start(reason: "Unlock Lockr")
+        // The panel is gone now, so the curtain can take the focus back before the
+        // next attempt is armed.
+        authenticator.onEvaluationEnded = { [weak self] in
+            self?.showCurtains()
+        }
 
-        // Focus must stay on the curtain; take it back if anything steals it.
+        caffeine.start()
+        cursorHider.start()
+        // Arm Touch ID only once the curtain owns the focus: the system panel takes the
+        // focus for the whole evaluation and must be allowed to win it (see
+        // `activateIfNeeded`).
+        showCurtains { [weak self] in
+            self?.authenticator.start(reason: "Unlock Lockr")
+        }
+
+        if trustedForAccessibility, inputBlocker.start() {
+            inputBlocker.onKeyDown = { [weak self] event in
+                guard let self else { return }
+                // The system panel owns the focus while biometrics is armed; taking it
+                // back would cancel the Touch ID match (see `activateIfNeeded`). Typing
+                // still reaches the password field either way.
+                if !self.biometricsOwnFocus,
+                   NSWorkspace.shared.frontmostApplication?.processIdentifier != getpid() {
+                    debugLog("focus lost while locked, re-activating")
+                    self.showCurtains()
+                }
+                self.windows.first?.handleKeyDown(event)
+            }
+        } else {
+            // Never fail open silently: the curtain is up but input reaches other apps.
+            debugLog("WARNING: Lockr is not trusted for Accessibility, keystrokes and clicks are NOT blocked.")
+            debugLog("WARNING: enable Lockr under System Settings > Privacy & Security > Accessibility.")
+        }
+
+        // Focus must stay on the curtain; take it back if anything steals it, unless
+        // the authentication panel holds it (see `activateIfNeeded`).
         NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self, !self.isShuttingDown else { return }
+            guard let self, !self.isShuttingDown, !self.biometricsOwnFocus else { return }
             debugLog("focus lost while locked, re-activating")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                guard let self, !self.isShuttingDown else { return }
+                guard let self, !self.isShuttingDown, !self.biometricsOwnFocus else { return }
                 self.showCurtains()
             }
         }
@@ -144,22 +158,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for window in windows { window.setBiometricHint(text) }
     }
 
-    private func showCurtains() {
+    private func showCurtains(completion: (() -> Void)? = nil) {
         for window in windows { window.makeKeyAndOrderFront(nil) }
         NSApp.activate()
         NSApp.presentationOptions = lockedPresentationOptions
-        activateIfNeeded(attempts: 5)
+        activateIfNeeded(attempts: 5, completion: completion)
     }
 
     /// macOS may refuse an activation request (cooperative activation), so retry a
     /// few times until the curtain really is frontmost and its window is key.
-    private func activateIfNeeded(attempts: Int) {
-        guard attempts > 0, !isShuttingDown else { return }
-        guard NSWorkspace.shared.frontmostApplication?.processIdentifier != getpid() else { return }
+    ///
+    /// Never while LocalAuthentication's panel is up: the panel belongs to another
+    /// process (`coreautha`) and holds the focus for the whole evaluation. Taking it
+    /// back makes the panel report "UI lost focus" (LAError -4), after which
+    /// LocalAuthentication stops the Touch ID match operation while the evaluation
+    /// stays pending - a sensor touch then does nothing at all.
+    private func activateIfNeeded(attempts: Int, completion: (() -> Void)? = nil) {
+        guard !isShuttingDown else { return }
+        guard !biometricsOwnFocus else {
+            completion?()
+            return
+        }
+        guard attempts > 0, NSWorkspace.shared.frontmostApplication?.processIdentifier != getpid() else {
+            completion?()
+            return
+        }
         NSApp.activate()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            self?.activateIfNeeded(attempts: attempts - 1)
+            self?.activateIfNeeded(attempts: attempts - 1, completion: completion)
         }
+    }
+
+    /// True while a biometric evaluation is pending or its panel is already frontmost:
+    /// the panel owns the focus and Lockr must not take it back.
+    private var biometricsOwnFocus: Bool {
+        authenticator.isEvaluating || authPanelIsFrontmost
+    }
+
+    /// `coreautha` (`com.apple.LocalAuthentication.UIAgent`) draws that panel.
+    private var authPanelIsFrontmost: Bool {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.LocalAuthentication.UIAgent"
     }
 }
 
