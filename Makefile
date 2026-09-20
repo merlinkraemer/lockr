@@ -1,5 +1,7 @@
 APP_NAME := Lockr
-SIGN_ID  := -
+# Ad-hoc by default. Override for a stable Accessibility grant across rebuilds:
+#   make CODESIGN_IDENTITY="Apple Development: Your Name (TEAMID)" install
+CODESIGN_IDENTITY ?= -
 ARCH     := $(shell uname -m)
 TARGET   := $(ARCH)-apple-macos14.0
 
@@ -17,7 +19,7 @@ $(APP): $(SOURCES) Resources/Info.plist Makefile
 	mkdir -p $(APP)/Contents/MacOS
 	swiftc -O -target $(TARGET) -o $(BIN) $(SOURCES)
 	cp Resources/Info.plist $(APP)/Contents/Info.plist
-	codesign --force --sign "$(SIGN_ID)" $(APP)
+	codesign --force --sign "$(CODESIGN_IDENTITY)" $(APP)
 	@echo "built $(APP)"
 
 install: $(APP)
