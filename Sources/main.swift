@@ -22,8 +22,8 @@ app.delegate = delegate
 app.setActivationPolicy(.accessory)
 
 // MANDATORY safety valve: LOCKR_TEST_SECONDS=N auto-unlocks and quits after N seconds.
-// While it is set the curtain ignores input, so a keypress can never hijack the run
-// into the real authentication sheet.
+// Under the valve the Touch ID prompt is skipped and the timer ends the run whatever is
+// typed into the password field.
 if let seconds = testSeconds, seconds > 0 {
     debugLog("LOCKR_TEST_SECONDS=\(seconds): auto-unlock armed")
     DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {

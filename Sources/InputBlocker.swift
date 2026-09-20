@@ -26,8 +26,6 @@ final class InputBlocker {
         return types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << $1.rawValue) }
     }()
 
-    var isActive: Bool { tap != nil }
-
     @discardableResult
     func start() -> Bool {
         guard tap == nil else { return true }

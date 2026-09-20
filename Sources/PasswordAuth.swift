@@ -33,7 +33,6 @@ final class PasswordFieldView: NSView {
     private var typedCount = 0
 
     override var acceptsFirstResponder: Bool { true }
-    override func becomeFirstResponder() -> Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         let border = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)

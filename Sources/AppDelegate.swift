@@ -1,11 +1,12 @@
 import AppKit
 import ApplicationServices
 
-// Font family taken verbatim from Ghostty's `font-family` setting.
+// Font family for the `locked` label and the password field; falls back to the
+// system monospaced font when it is not installed.
 let lockedFontFamily = "Cousine Nerd Font Mono"
 // Point size for the `locked` label.
 let lockedFontSize: CGFloat = 18
-// `locked` label colour: the terminal's effective foreground, gruvbox-tinted white #ebdbb2.
+// `locked` label colour: gruvbox-tinted white #ebdbb2.
 let lockedTextColor = NSColor(srgbRed: 0xEB / 255, green: 0xDB / 255, blue: 0xB2 / 255, alpha: 1)
 // Password field: same family, smaller and quieter than the label.
 let passwordFontSize: CGFloat = 13

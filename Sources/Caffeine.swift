@@ -4,8 +4,6 @@ import Foundation
 final class Caffeine {
     private var process: Process?
 
-    var pid: Int32? { process?.processIdentifier }
-
     func start() {
         guard process == nil else { return }
         let child = Process()
