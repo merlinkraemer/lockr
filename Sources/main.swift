@@ -88,10 +88,12 @@ if !launchedInBackground, testSeconds == nil, getppid() != 1 {
     exit(open.terminationStatus)
 }
 
-// One copy only: a second one would stack a second curtain and hotkey.
+// One copy only: a second one would stack a second curtain and hotkey. A login
+// agent copy exits with an error so launchd tries again shortly: the other copy
+// is a short-lived one that hands over to the agent when it is done.
 if let running = otherInstances().first {
     debugLog("already running as pid \(running.processIdentifier), exiting")
-    exit(0)
+    exit(launchedInBackground ? 1 : 0)
 }
 
 let app = NSApplication.shared

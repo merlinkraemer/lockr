@@ -55,13 +55,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let session = LockSession()
         session.onEnd = { [weak self] in
             self?.session = nil
-            if self?.quitAfterUnlock == true { NSApp.terminate(nil) }
+            self?.quitIfNotResident()
         }
         guard session.start() else {
-            if quitAfterUnlock { NSApp.terminate(nil) }
+            quitIfNotResident()
             return
         }
         self.session = session
+    }
+
+    /// Only the login agent's copy stays in the background. A copy opened by hand
+    /// (Spotlight, `open -a`) while the agent is off locks once, then starts the
+    /// agent and quits. With the agent disabled it stays resident itself.
+    private func quitIfNotResident() {
+        if quitAfterUnlock {
+            NSApp.terminate(nil)
+        } else if !launchedInBackground, LoginAgent.isEnabled {
+            LoginAgent.start()
+            NSApp.terminate(nil)
+        }
     }
 
     /// Unlocks if locked; used by the debug timeout and on SIGTERM/SIGINT.
@@ -84,6 +96,16 @@ enum LoginAgent {
         } catch {
             debugLog("could not register login agent: \(error.localizedDescription)")
         }
+    }
+
+    static var isEnabled: Bool { service.status == .enabled }
+
+    /// Starts the agent now instead of at the next login.
+    static func start() {
+        let launchctl = Process()
+        launchctl.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        launchctl.arguments = ["kickstart", "gui/\(getuid())/\(bundleIdentifier).agent"]
+        try? launchctl.run()
     }
 
     static func enable() throws {
