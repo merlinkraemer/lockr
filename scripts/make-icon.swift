@@ -1,13 +1,8 @@
-// Draws Resources/AppIcon.icns: the lock screen itself, shrunk onto a black tile.
+// Draws Resources/AppIcon.icns: a padlock in the lock screen's style on a black tile.
 // Run from the repo root: swift scripts/make-icon.swift
 import AppKit
 
 let cream = NSColor(srgbRed: 0xEB / 255, green: 0xDB / 255, blue: 0xB2 / 255, alpha: 1)
-
-func font(_ size: CGFloat) -> NSFont {
-    NSFont(name: "Cousine Nerd Font Mono", size: size)
-        ?? NSFont.monospacedSystemFont(ofSize: size, weight: .light)
-}
 
 func render(_ px: Int) -> Data {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
@@ -27,24 +22,35 @@ func render(_ px: Int) -> Data {
     shape.lineWidth = 4
     shape.stroke()
 
-    let center = NSMutableParagraphStyle()
-    center.alignment = .center
-    let label = NSAttributedString(string: "locked", attributes: [
-        .font: font(112), .foregroundColor: cream, .paragraphStyle: center,
-    ])
-    let labelHeight = label.size().height
-    label.draw(in: NSRect(x: 100, y: 512 + 24, width: 824, height: labelHeight))
+    // A padlock drawn with the lock screen's thin cream strokes.
+    let stroke: CGFloat = 26
+    cream.setStroke()
 
-    let field = NSRect(x: 262, y: 512 - 24 - 96, width: 500, height: 96)
-    let fieldPath = NSBezierPath(roundedRect: field.insetBy(dx: 3, dy: 3), xRadius: 18, yRadius: 18)
-    cream.withAlphaComponent(0.3).setStroke()
-    fieldPath.lineWidth = 6
-    fieldPath.stroke()
-    let dots = NSAttributedString(string: "••••", attributes: [
-        .font: font(72), .foregroundColor: cream.withAlphaComponent(0.85), .paragraphStyle: center,
-    ])
-    let dotsHeight = dots.size().height
-    dots.draw(in: NSRect(x: field.minX, y: field.midY - dotsHeight / 2, width: field.width, height: dotsHeight))
+    let body = NSRect(x: 342, y: 257, width: 340, height: 264)
+    let bodyPath = NSBezierPath(roundedRect: body, xRadius: 36, yRadius: 36)
+    bodyPath.lineWidth = stroke
+    bodyPath.stroke()
+
+    // Shackle: two legs rising from the body, joined by a half circle.
+    let radius: CGFloat = 108
+    let shackleTop: CGFloat = 647
+    let shackle = NSBezierPath()
+    shackle.move(to: NSPoint(x: 512 - radius, y: body.maxY))
+    shackle.line(to: NSPoint(x: 512 - radius, y: shackleTop))
+    shackle.appendArc(withCenter: NSPoint(x: 512, y: shackleTop), radius: radius,
+                      startAngle: 180, endAngle: 0, clockwise: true)
+    shackle.line(to: NSPoint(x: 512 + radius, y: body.maxY))
+    shackle.lineWidth = stroke
+    shackle.lineCapStyle = .butt
+    shackle.stroke()
+
+    // Keyhole: one solid shape, a circle over a short rounded bar.
+    let keyhole = NSBezierPath(ovalIn: NSRect(x: 512 - 26, y: body.midY - 4, width: 52, height: 52))
+    keyhole.append(NSBezierPath(roundedRect: NSRect(x: 512 - 11, y: body.midY - 52, width: 22, height: 70),
+                                xRadius: 11, yRadius: 11))
+    keyhole.windingRule = .nonZero
+    cream.setFill()
+    keyhole.fill()
 
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!
