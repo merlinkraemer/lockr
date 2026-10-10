@@ -53,7 +53,7 @@ enum LoginAgent {
     private static let optOutKey = "LoginAgentDisabled"
 
     static func registerUnlessOptedOut() {
-        guard !UserDefaults.standard.bool(forKey: optOutKey), service.status != .enabled else { return }
+        guard !optedOut, service.status != .enabled else { return }
         do {
             try service.register()
             debugLog("login agent registered")
@@ -63,12 +63,24 @@ enum LoginAgent {
     }
 
     static func enable() throws {
-        UserDefaults.standard.set(false, forKey: optOutKey)
+        optedOut = false
         try service.register()
     }
 
     static func disable() throws {
-        UserDefaults.standard.set(true, forKey: optOutKey)
+        optedOut = true
         try service.unregister()
+    }
+
+    /// Stored under the bundle ID explicitly: the `lockr` command is a symlink to
+    /// the binary, and run that way the standard defaults land in a "lockr" domain.
+    private static var optedOut: Bool {
+        get {
+            CFPreferencesGetAppBooleanValue(optOutKey as CFString, bundleIdentifier as CFString, nil)
+        }
+        set {
+            CFPreferencesSetAppValue(optOutKey as CFString, newValue as CFBoolean, bundleIdentifier as CFString)
+            CFPreferencesAppSynchronize(bundleIdentifier as CFString)
+        }
     }
 }

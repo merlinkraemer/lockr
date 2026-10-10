@@ -9,7 +9,8 @@ jobs keep going while you're away.
 
 Unlock with **Touch ID** or your **account password**.
 
-- One small native binary, no dependencies, ~800 lines of Swift
+- **Cmd-Shift-/** locks from anywhere. No other tools needed
+- One small native app, no dependencies, idles in the background with no icon
 - Covers every connected display
 - Blocks input at the session level, so nothing reaches other apps
 - Hides the cursor and suppresses app switching, Force Quit and the Dock
@@ -17,64 +18,38 @@ Unlock with **Touch ID** or your **account password**.
 - The password is checked against your local account and is never stored or logged
 - Optional: stays awake with the lid closed
 
-## Requirements
-
-- macOS 14 or later
-- Xcode Command Line Tools (`xcode-select --install`)
-
 ## Install
 
-### Homebrew
-
 ```bash
-brew install merlinkraemer/tap/lockr
+brew install --cask merlinkraemer/tap/lockr
 ```
 
-This builds Lockr on your Mac and adds a `lockr` command. Each `brew upgrade`
-rebuilds the app, so macOS asks for Accessibility again.
+Or download `Lockr-<version>.zip` from
+[Releases](https://github.com/merlinkraemer/lockr/releases) and move
+`Lockr.app` to `/Applications`. Releases are signed and notarized. Lockr needs
+macOS 14 or later.
 
-### From source
+### First run
 
-```bash
-git clone https://github.com/merlinkraemer/lockr.git
-cd lockr
-make install
-```
+1. Open Lockr from Spotlight or `/Applications`.
+2. macOS asks for **Accessibility** permission. Lockr needs it to block input.
+   Enable Lockr under **System Settings → Privacy & Security → Accessibility**.
+3. Press **Cmd-Shift-/** to lock.
 
-This builds `Lockr.app` and copies it to `~/Applications`.
-
-The first time you run it, Lockr asks for **Accessibility** permission, which it
-needs to block input, and quits without locking. Enable Lockr under
-**System Settings → Privacy & Security → Accessibility**, then run it again.
-
-> The build is ad-hoc signed by default, so macOS treats each rebuild as a new
-> app and you have to re-grant Accessibility. To keep the grant across rebuilds,
-> sign with your own identity:
-> `make CODESIGN_IDENTITY="Apple Development: Your Name (TEAMID)" install`
+From then on Lockr starts in the background at login. macOS lists it under
+**System Settings → General → Login Items**.
 
 ## Usage
 
-```bash
-lockr            # Homebrew
-open -a Lockr    # from source
-```
+| | |
+| --- | --- |
+| Lock | **Cmd-Shift-/**, open Lockr again, or run `lockr` |
+| Unlock | Touch the Touch ID sensor, or type your password and press Return |
+| Stop and turn off at login | `lockr --disable` |
+| Turn back on | `lockr --enable` |
 
-Bind that to a hotkey with whatever tool you use: AeroSpace, skhd, Hammerspoon,
-Raycast, Karabiner-Elements or Shortcuts.
-
-**AeroSpace**
-
-```toml
-cmd-shift-slash = 'exec-and-forget open -a Lockr'
-```
-
-**skhd**
-
-```
-cmd + shift - 0x2C : open -a Lockr
-```
-
-To unlock, touch the Touch ID sensor, or type your password and press Return.
+`open -a Lockr` also locks, so you can bind Lockr in any hotkey tool
+(AeroSpace, skhd, Raycast, Hammerspoon) instead of using the built-in shortcut.
 
 ## Staying awake with the lid closed
 
@@ -109,22 +84,43 @@ Things to know:
 ## Customizing
 
 The look is set by constants at the top of
-[`Sources/AppDelegate.swift`](Sources/AppDelegate.swift): font, sizes, colors
-and the password placeholder. If the font isn't installed, Lockr falls back to
-the system monospaced font. Rebuild with `make install` after you change them.
+[`Sources/LockSession.swift`](Sources/LockSession.swift): font, sizes, colors
+and the password placeholder. The shortcut is set in
+[`Sources/Hotkey.swift`](Sources/Hotkey.swift). If the font isn't installed,
+Lockr falls back to the system monospaced font.
 
-## Debugging
+## Building from source
+
+Needs the Xcode Command Line Tools (`xcode-select --install`).
+
+```bash
+git clone https://github.com/merlinkraemer/lockr.git
+cd lockr
+make install    # builds Lockr.app into ~/Applications
+```
+
+The build is ad-hoc signed by default, so macOS treats each rebuild as a new
+app and you have to grant Accessibility again. To keep the grant across
+rebuilds, sign with your own identity:
+`make CODESIGN_IDENTITY="Apple Development: Your Name (TEAMID)" install`
+
+### Debugging
 
 Lockr logs to stderr. Run the binary directly to see the logs:
 
 ```bash
-LOCKR_TEST_SECONDS=20 ~/Applications/Lockr.app/Contents/MacOS/Lockr
+LOCKR_TEST_SECONDS=20 build/Lockr.app/Contents/MacOS/Lockr
 ```
 
-`LOCKR_TEST_SECONDS` unlocks automatically after the given number of seconds.
-Use it when you try changes, so a bug can't lock you out. `Ctrl-C` in that
-terminal won't reach it while input is blocked, but `kill` from an SSH session
-will (Lockr unlocks cleanly on SIGTERM).
+This locks once and unlocks automatically after the given number of seconds,
+so a bug can't lock you out. Note that a binary started from a terminal uses
+the terminal's Accessibility permission, not Lockr's.
+
+### Releasing
+
+`scripts/release.sh` builds a universal app, signs it with a Developer ID,
+notarizes it and publishes a GitHub release. Run `swift scripts/make-icon.swift`
+to redraw the icon.
 
 ## Limitations
 
