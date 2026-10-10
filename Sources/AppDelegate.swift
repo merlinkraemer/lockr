@@ -17,7 +17,7 @@ let passwordPlaceholder = "password"
 let shakeDistance: CGFloat = 6
 let shakeDuration: CFTimeInterval = 0.3
 // Shown on the curtain when input cannot actually be blocked.
-let blockingWarning = "accessibility permission missing - input not blocked"
+let blockingWarning = "input not blocked - check Accessibility permission"
 let warningFontSize: CGFloat = 11
 let warningColor = NSColor(srgbRed: 0.85, green: 0.35, blue: 0.35, alpha: 1)
 // Dim hint under the password field when Touch ID cannot be used.
@@ -47,10 +47,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var foreignFocusTicks = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Without Accessibility input cannot be blocked, and the system's permission
+        // dialog would sit hidden behind the curtain. Ask, then quit without locking.
+        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        guard AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary) else {
+            debugLog("not trusted for Accessibility: asked for permission, not locking")
+            NSApp.terminate(nil)
+            return
+        }
+        let blockingInput = inputBlocker.start()
+
         // Multi-display hotplug is not handled: cover the screens present at launch.
-        let trustedForAccessibility = AXIsProcessTrusted()
         for screen in NSScreen.screens {
-            let window = CurtainWindow(screen: screen, showBlockingWarning: !trustedForAccessibility)
+            let window = CurtainWindow(screen: screen, showBlockingWarning: !blockingInput)
             window.onSubmitPassword = { [weak self] password in self?.verifyPassword(password) }
             windows.append(window)
         }
@@ -86,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.authenticator.start(reason: "Unlock Lockr")
         }
 
-        if trustedForAccessibility, inputBlocker.start() {
+        if blockingInput {
             inputBlocker.onKeyDown = { [weak self] event in
                 guard let self else { return }
                 // The system panel owns the focus while biometrics is armed; taking it
@@ -101,8 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             // Never fail open silently: the curtain is up but input reaches other apps.
-            debugLog("WARNING: Lockr is not trusted for Accessibility, keystrokes and clicks are NOT blocked.")
-            debugLog("WARNING: enable Lockr under System Settings > Privacy & Security > Accessibility.")
+            debugLog("WARNING: event tap failed, keystrokes and clicks are NOT blocked.")
         }
 
         watchBiometricFocus()

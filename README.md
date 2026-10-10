@@ -32,9 +32,9 @@ make install
 
 This builds `Lockr.app` and copies it to `~/Applications`.
 
-Then enable Lockr under **System Settings → Privacy & Security → Accessibility**.
-Without that permission Lockr can't block input. It still locks, but shows a
-red warning on the screen.
+The first time you run it, Lockr asks for **Accessibility** permission, which it
+needs to block input, and quits without locking. Enable Lockr under
+**System Settings → Privacy & Security → Accessibility**, then run it again.
 
 > The build is ad-hoc signed by default, so macOS treats each rebuild as a new
 > app and you have to re-grant Accessibility. To keep the grant across rebuilds,
