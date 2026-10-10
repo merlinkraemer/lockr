@@ -14,11 +14,12 @@ SOURCES := $(wildcard Sources/*.swift)
 
 all: $(APP)
 
-$(APP): $(SOURCES) Resources/Info.plist Makefile
+$(APP): $(SOURCES) Resources/Info.plist Resources/AppIcon.icns Makefile
 	rm -rf $(APP)
-	mkdir -p $(APP)/Contents/MacOS
+	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	swiftc -O -target $(TARGET) -o $(BIN) $(SOURCES)
 	cp Resources/Info.plist $(APP)/Contents/Info.plist
+	cp Resources/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
 	codesign --force --sign "$(CODESIGN_IDENTITY)" $(APP)
 	@echo "built $(APP)"
 
