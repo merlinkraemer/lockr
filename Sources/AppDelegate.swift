@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let passwordAuthenticator = PasswordAuthenticator()
     private var authInProgress = false
     private var isShuttingDown = false
+    private var focusWatchdog: Timer?
+    private var foreignFocusTicks = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Multi-display hotplug is not handled: cover the screens present at launch.
@@ -103,6 +105,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             debugLog("WARNING: enable Lockr under System Settings > Privacy & Security > Accessibility.")
         }
 
+        watchBiometricFocus()
+
         // Focus must stay on the curtain; take it back if anything steals it, unless
         // the authentication panel holds it (see `activateIfNeeded`).
         NotificationCenter.default.addObserver(
@@ -123,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Cursor and event tap are always restored here, whatever the exit reason.
     func shutDown() {
         isShuttingDown = true
+        focusWatchdog?.invalidate()
         authenticator.stop()
         debugLog("unlocking, restoring input and cursor")
         inputBlocker.stop()
@@ -152,6 +157,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    /// A pending evaluation dies silently once its panel loses the focus (see
+    /// `activateIfNeeded`), so restart it whenever that may have happened: another
+    /// app holds the focus for a couple of seconds, or the Mac comes back from
+    /// sleep or the system lock screen.
+    private func watchBiometricFocus() {
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, self.authenticator.isEvaluating else {
+                self?.foreignFocusTicks = 0
+                return
+            }
+            let frontmost = NSWorkspace.shared.frontmostApplication
+            let foreign = frontmost?.processIdentifier != getpid() && !self.authPanelIsFrontmost
+            self.foreignFocusTicks = foreign ? self.foreignFocusTicks + 1 : 0
+            if self.foreignFocusTicks >= 2 {
+                debugLog("focus held by \(frontmost?.bundleIdentifier ?? "?") during Touch ID")
+                self.foreignFocusTicks = 0
+                self.authenticator.restart()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        focusWatchdog = timer
+
+        let restartAfterWake: (Notification) -> Void = { [weak self] note in
+            debugLog("\(note.name.rawValue), restarting Touch ID")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                self?.authenticator.restart()
+            }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main, using: restartAfterWake)
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsUnlocked"), object: nil, queue: .main, using: restartAfterWake)
     }
 
     private func showBiometricHint(_ text: String) {

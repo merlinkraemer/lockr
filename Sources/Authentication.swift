@@ -47,11 +47,27 @@ final class Authenticator {
     private var context: LAContext?
     private var attempt = 0
     private var running = false
+    private var reason = ""
 
     /// Arms Touch ID and keeps re-arming after non-fatal outcomes.
     func start(reason: String) {
         running = true
-        arm(reason: reason)
+        self.reason = reason
+        arm()
+    }
+
+    /// Abandons a pending evaluation and arms a fresh one. For when the panel has
+    /// lost the focus to someone else (another app, sleep, the system lock screen):
+    /// such an evaluation stays pending with the sensor dead and never ends itself.
+    func restart() {
+        guard running, isEvaluating else { return }
+        debugLog("biometrics #\(attempt): restarting stuck evaluation")
+        attempt += 1
+        isEvaluating = false
+        context?.invalidate()
+        context = nil
+        onEvaluationEnded?()
+        scheduleRearm()
     }
 
     /// Ends the current evaluation; used when the lockdown itself is ending.
@@ -63,7 +79,7 @@ final class Authenticator {
         context = nil
     }
 
-    private func arm(reason: String) {
+    private func arm() {
         guard running else { return }
         attempt += 1
         let attempt = self.attempt
@@ -78,11 +94,7 @@ final class Authenticator {
             return
         }
 
-        debugLog("biometrics #\(attempt): armed (biometryType=\(context.biometryType.rawValue))")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            guard let self, self.running, self.attempt == attempt else { return }
-            Self.logAuthPanel(attempt: attempt)
-        }
+        debugLog("biometrics #\(attempt): armed")
         isEvaluating = true
         context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, error in
             DispatchQueue.main.async { [weak self] in
@@ -103,13 +115,19 @@ final class Authenticator {
                     return
                 case .armed, .retrying:
                     // The context is spent; re-arm so a later touch still unlocks.
-                    // A small delay keeps a burst of instant errors from spinning.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                        guard let self, self.running, self.attempt == attempt else { return }
-                        self.arm(reason: reason)
-                    }
+                    self.scheduleRearm()
                 }
             }
+        }
+    }
+
+    /// A small delay keeps a burst of instant errors from spinning, and lets the
+    /// caller take the focus back before the next panel claims it.
+    private func scheduleRearm() {
+        let attempt = self.attempt
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.running, self.attempt == attempt, !self.isEvaluating else { return }
+            self.arm()
         }
     }
 
@@ -130,31 +148,5 @@ final class Authenticator {
     private static func describe(_ error: NSError?) -> String {
         guard let error else { return "nil" }
         return "\(error.domain)#\(error.code): \(error.localizedDescription)"
-    }
-
-    /// Reports any LocalAuthentication panel window and its level. The panel is
-    /// drawn at level 1000, below the curtain's `CGShieldingWindowLevel()`, so this
-    /// proves remotely that the sensor is armed while the panel stays hidden.
-    private static func logAuthPanel(attempt: Int) {
-        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
-            debugLog("biometrics #\(attempt): panel check unavailable")
-            return
-        }
-        let mine = Int(getpid())
-        let panels: [String] = list.compactMap { window in
-            guard let pid = window[kCGWindowOwnerPID as String] as? Int, pid != mine else { return nil }
-            let owner = window[kCGWindowOwnerName as String] as? String ?? "?"
-            let level = window[kCGWindowLayer as String] as? Int ?? -999
-            let name = window[kCGWindowName as String] as? String ?? ""
-            let low = (owner + " " + name).lowercased()
-            guard low.contains("coreauth") || low.contains("biometr") || low.contains("auth") else { return nil }
-            return "\(owner) level=\(level) name=\"\(name)\""
-        }
-        let curtainLevel = Int(CGShieldingWindowLevel())
-        if panels.isEmpty {
-            debugLog("biometrics #\(attempt): no auth panel window; curtain level=\(curtainLevel)")
-        } else {
-            debugLog("biometrics #\(attempt): auth panel [\(panels.joined(separator: "; "))]; curtain level=\(curtainLevel)")
-        }
     }
 }
