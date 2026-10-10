@@ -24,6 +24,17 @@ Unlock with **Touch ID** or your **account password**.
 
 ## Install
 
+### Homebrew
+
+```bash
+brew install merlinkraemer/tap/lockr
+```
+
+This builds Lockr on your Mac and adds a `lockr` command. Each `brew upgrade`
+rebuilds the app, so macOS asks for Accessibility again.
+
+### From source
+
 ```bash
 git clone https://github.com/merlinkraemer/lockr.git
 cd lockr
@@ -44,7 +55,8 @@ needs to block input, and quits without locking. Enable Lockr under
 ## Usage
 
 ```bash
-open -a Lockr
+lockr            # Homebrew
+open -a Lockr    # from source
 ```
 
 Bind that to a hotkey with whatever tool you use: AeroSpace, skhd, Hammerspoon,
