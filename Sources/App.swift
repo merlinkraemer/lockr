@@ -20,6 +20,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !launchedInBackground { lock() }
     }
 
+    /// A background copy that is told to quit (a Homebrew upgrade, Activity Monitor)
+    /// exits non-zero, so the login agent starts the current version again. Once
+    /// `--disable` has unregistered the agent, nothing restarts it.
+    func applicationWillTerminate(_ notification: Notification) {
+        if launchedInBackground { exit(1) }
+    }
+
     /// `open -a Lockr` on the running app lands here.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         lock()

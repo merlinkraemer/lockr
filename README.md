@@ -47,6 +47,7 @@ From then on Lockr starts in the background at login. macOS lists it under
 | Unlock | Touch the Touch ID sensor, or type your password and press Return |
 | Stop and turn off at login | `lockr --disable` |
 | Turn back on | `lockr --enable` |
+| Uninstall | `lockr --disable`, then `brew uninstall --cask lockr` |
 
 `open -a Lockr` also locks, so you can bind Lockr in any hotkey tool
 (AeroSpace, skhd, Raycast, Hammerspoon) instead of using the built-in shortcut.
