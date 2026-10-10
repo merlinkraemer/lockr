@@ -6,13 +6,17 @@ func debugLog(_ message: String) {
 }
 
 let usage = """
-usage: lockr [--enable | --disable | --help]
+usage: lockr [--enable | --disable | --shortcut [<keys> | none | default] | --help]
 
-  (no option)  lock now
-  --enable     start Lockr at login (the default)
-  --disable    stop Lockr and don't start it at login
+  (no option)         lock now
+  --enable            start Lockr at login (the default)
+  --disable           stop Lockr and don't start it at login
+  --shortcut          show the lock shortcut
+  --shortcut <keys>   set it, e.g. cmd-shift-l
+  --shortcut none     turn it off, e.g. to bind `open -a Lockr` elsewhere
+  --shortcut default  back to cmd-shift-slash
 
-Cmd-Shift-/ locks while Lockr runs in the background.
+\(Shortcut.help)
 """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -30,7 +34,7 @@ case "--help", "-h":
 case "--enable":
     do {
         try LoginAgent.enable()
-        print("Lockr starts at login. Cmd-Shift-/ locks.")
+        print("Lockr starts at login. \(Shortcut.stored) locks.")
         exit(0)
     } catch {
         print("could not enable: \(error.localizedDescription)")
@@ -40,6 +44,28 @@ case "--disable":
     do { try LoginAgent.disable() } catch { debugLog("unregister: \(error.localizedDescription)") }
     for app in otherInstances() { app.terminate() }
     print("Lockr stopped and won't start at login. `lockr --enable` turns it back on.")
+    exit(0)
+case "--shortcut":
+    guard arguments.count >= 2 else {
+        print(Shortcut.stored)
+        exit(0)
+    }
+    let spec = arguments[1].lowercased()
+    switch spec {
+    case "default":
+        Shortcut.stored = Shortcut.defaultSpec
+    case "none":
+        Shortcut.stored = "none"
+    default:
+        guard Shortcut(spec) != nil else {
+            print("not a valid shortcut: \(spec)\n\n\(Shortcut.help)")
+            exit(2)
+        }
+        Shortcut.stored = spec
+    }
+    DistributedNotificationCenter.default().postNotificationName(
+        Shortcut.changedNotification, object: nil, userInfo: nil, deliverImmediately: true)
+    print(Shortcut.stored == "none" ? "Lock shortcut turned off." : "Lock shortcut: \(Shortcut.stored)")
     exit(0)
 case "--background", nil:
     break

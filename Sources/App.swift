@@ -15,9 +15,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var session: LockSession?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        hotkey = Hotkey { [weak self] in self?.lock() }
+        registerShortcut()
+        // `lockr --shortcut` changes the setting and tells the running copy.
+        DistributedNotificationCenter.default().addObserver(
+            forName: Shortcut.changedNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.registerShortcut() }
         if !quitAfterUnlock { LoginAgent.registerUnlessOptedOut() }
         if !launchedInBackground { lock() }
+    }
+
+    private func registerShortcut() {
+        hotkey = nil
+        CFPreferencesAppSynchronize(bundleIdentifier as CFString)
+        let spec = Shortcut.stored
+        guard spec != "none" else {
+            debugLog("no shortcut set")
+            return
+        }
+        guard let shortcut = Shortcut(spec) ?? Shortcut(Shortcut.defaultSpec) else { return }
+        hotkey = Hotkey(shortcut) { [weak self] in self?.lock() }
+        debugLog("shortcut: \(spec)")
     }
 
     /// A background copy that is told to quit (a Homebrew upgrade, Activity Monitor)
@@ -79,15 +96,8 @@ enum LoginAgent {
         try service.unregister()
     }
 
-    /// Stored under the bundle ID explicitly: the `lockr` command is a symlink to
-    /// the binary, and run that way the standard defaults land in a "lockr" domain.
     private static var optedOut: Bool {
-        get {
-            CFPreferencesGetAppBooleanValue(optOutKey as CFString, bundleIdentifier as CFString, nil)
-        }
-        set {
-            CFPreferencesSetAppValue(optOutKey as CFString, newValue as CFBoolean, bundleIdentifier as CFString)
-            CFPreferencesAppSynchronize(bundleIdentifier as CFString)
-        }
+        get { Preferences.bool(optOutKey) }
+        set { Preferences.set(optOutKey, newValue as CFBoolean) }
     }
 }

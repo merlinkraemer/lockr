@@ -34,7 +34,7 @@ macOS 14 or later.
 1. Open Lockr from Spotlight or `/Applications`.
 2. macOS asks for **Accessibility** permission. Lockr needs it to block input.
    Enable Lockr under **System Settings → Privacy & Security → Accessibility**.
-3. Press **Cmd-Shift-/** to lock.
+3. Press **Cmd-Shift-/** to lock. You can [change the shortcut](#custom-shortcut).
 
 From then on Lockr starts in the background at login. macOS lists it under
 **System Settings → General → Login Items**.
@@ -47,10 +47,39 @@ From then on Lockr starts in the background at login. macOS lists it under
 | Unlock | Touch the Touch ID sensor, or type your password and press Return |
 | Stop and turn off at login | `lockr --disable` |
 | Turn back on | `lockr --enable` |
+| Change the shortcut | `lockr --shortcut ctrl-opt-l` |
 | Uninstall | `lockr --disable`, then `brew uninstall --cask lockr` |
 
-`open -a Lockr` also locks, so you can bind Lockr in any hotkey tool
-(AeroSpace, skhd, Raycast, Hammerspoon) instead of using the built-in shortcut.
+### Custom shortcut
+
+```bash
+lockr --shortcut                  # show the current one
+lockr --shortcut ctrl-opt-l       # set a new one
+lockr --shortcut default          # back to cmd-shift-slash
+lockr --shortcut none             # turn it off
+```
+
+A shortcut is one or more modifiers and one key, joined by `-`. The running
+copy picks up the change right away.
+
+- **Modifiers:** `cmd`, `shift`, `opt`, `ctrl`
+- **Keys:** `a`–`z`, `0`–`9`, `f1`–`f12`, `slash`, `backslash`, `comma`,
+  `period`, `semicolon`, `quote`, `minus`, `equal`, `grave`, `leftbracket`,
+  `rightbracket`, `space`, `return`, `tab`, `escape`, `delete`
+
+Pick a shortcut no other app uses. Another app that grabs it first, like a
+window manager, keeps Lockr from seeing it.
+
+### Other hotkey tools
+
+`open -a Lockr` also locks. To bind Lockr in another tool (AeroSpace, skhd,
+Raycast, Hammerspoon), turn off the built-in shortcut with
+`lockr --shortcut none` and bind `open -a Lockr` there:
+
+```toml
+# AeroSpace
+cmd-shift-slash = 'exec-and-forget open -a Lockr'
+```
 
 ## Staying awake with the lid closed
 
@@ -86,8 +115,7 @@ Things to know:
 
 The look is set by constants at the top of
 [`Sources/LockSession.swift`](Sources/LockSession.swift): font, sizes, colors
-and the password placeholder. The shortcut is set in
-[`Sources/Hotkey.swift`](Sources/Hotkey.swift). If the font isn't installed,
+and the password placeholder. If the font isn't installed,
 Lockr falls back to the system monospaced font.
 
 ## Building from source
