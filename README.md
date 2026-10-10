@@ -8,6 +8,8 @@ Black screen on every display, input blocked, nothing goes to sleep. Builds,
 downloads and jobs keep running while you're away. Unlock with Touch ID or your
 password.
 
+<img src="docs/screenshot.png" width="600" alt="Lockr lock screen" />
+
 #### **Requires:** macOS 14+
 
 ## Install
@@ -72,7 +74,7 @@ LOCKR_TEST_SECONDS=20 build/Lockr.app/Contents/MacOS/Lockr   # test lock, auto-u
 
 Ad-hoc builds need Accessibility re-granted after every rebuild; pass
 `CODESIGN_IDENTITY="Apple Development: …"` to keep it. Look and feel live at the
-top of `Sources/LockSession.swift`. Releases: `scripts/release.sh`.
+top of `Sources/LockSession.swift`. Releases: `scripts/release.sh`. README images: `scripts/make-screenshot.sh`, `swift scripts/make-icon.swift`.
 
 ## Notes
 
