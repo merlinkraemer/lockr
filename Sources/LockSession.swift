@@ -34,7 +34,12 @@ let lockedPresentationOptions: NSApplication.PresentationOptions = [
     .hideMenuBar,
 ]
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+/// One lock, from curtain up to unlock. The app keeps running afterwards and
+/// starts a fresh session for the next lock.
+final class LockSession {
+    /// Called once the session has torn everything down.
+    var onEnd: (() -> Void)?
+
     private var windows: [CurtainWindow] = []
     private let authenticator = Authenticator()
     private let caffeine = Caffeine()
@@ -45,15 +50,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isShuttingDown = false
     private var focusWatchdog: Timer?
     private var foreignFocusTicks = 0
+    private var observers: [(NotificationCenter, NSObjectProtocol)] = []
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // Without Accessibility input cannot be blocked, and the system's permission
-        // dialog would sit hidden behind the curtain. Ask, then quit without locking.
+    /// Returns false, without locking, when Lockr is not trusted for Accessibility:
+    /// input could not be blocked, and the system's permission dialog would sit
+    /// hidden behind the curtain. The dialog is shown instead.
+    func start() -> Bool {
         let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         guard AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary) else {
             debugLog("not trusted for Accessibility: asked for permission, not locking")
-            NSApp.terminate(nil)
-            return
+            return false
         }
         let blockingInput = inputBlocker.start()
 
@@ -68,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // non-fatal outcome; password typing stays the fallback and never blocks it.
         authenticator.onUnlock = { [weak self] in
             debugLog("Touch ID succeeded, unlocking")
-            self?.shutDown()
+            self?.end()
         }
         authenticator.onStatus = { [weak self] status in
             switch status {
@@ -117,11 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Focus must stay on the curtain; take it back if anything steals it, unless
         // the authentication panel holds it (see `activateIfNeeded`).
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.didResignActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
+        observe(NotificationCenter.default, NSApplication.didResignActiveNotification) { [weak self] _ in
             guard let self, !self.isShuttingDown, !self.biometricsOwnFocus else { return }
             debugLog("focus lost while locked, re-activating")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -129,11 +131,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.showCurtains()
             }
         }
+        return true
     }
 
     /// The single teardown path: debug timeout, signal, Touch ID and password all use it.
     /// Cursor and event tap are always restored here, whatever the exit reason.
-    func shutDown() {
+    func end() {
+        guard !isShuttingDown else { return }
         isShuttingDown = true
         focusWatchdog?.invalidate()
         authenticator.stop()
@@ -142,7 +146,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cursorHider.stop()
         NSApp.presentationOptions = []
         caffeine.stop()
-        NSApp.terminate(nil)
+        for (center, token) in observers { center.removeObserver(token) }
+        observers = []
+        for window in windows { window.orderOut(nil) }
+        windows = []
+        // Hand the focus back to whatever was in front before the lock.
+        NSApp.hide(nil)
+        onEnd?()
+    }
+
+    private func observe(_ center: NotificationCenter, _ name: Notification.Name,
+                         _ handler: @escaping (Notification) -> Void) {
+        observers.append((center, center.addObserver(forName: name, object: nil, queue: .main, using: handler)))
     }
 
     /// The plaintext arrives from the field's cleared buffer and only lives inside
@@ -158,7 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.authInProgress = false
                 if accepted {
                     debugLog("password accepted, unlocking")
-                    self.shutDown()
+                    self.end()
                 } else {
                     debugLog("password rejected, staying locked")
                     for window in self.windows { window.rejectPassword() }
@@ -195,10 +210,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.authenticator.restart()
             }
         }
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main, using: restartAfterWake)
-        DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("com.apple.screenIsUnlocked"), object: nil, queue: .main, using: restartAfterWake)
+        observe(NSWorkspace.shared.notificationCenter, NSWorkspace.screensDidWakeNotification, restartAfterWake)
+        observe(DistributedNotificationCenter.default(), Notification.Name("com.apple.screenIsUnlocked"), restartAfterWake)
     }
 
     private func showBiometricHint(_ text: String) {
