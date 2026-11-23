@@ -82,7 +82,7 @@ final class LockSession {
                 self?.showBiometricHint("touch id locked - use password")
             case .unavailable:
                 self?.showBiometricHint("touch id unavailable - use password")
-            case .armed, .retrying:
+            case .armed, .retrying, .suspended:
                 break
             }
         }

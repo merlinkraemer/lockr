@@ -31,6 +31,9 @@ final class Authenticator {
         case lockedOut
         /// No enrolled biometry or no hardware: password only.
         case unavailable
+        /// The system lock screen is up and refuses the panel ("Can't show UI on the
+        /// lock screen"): re-arming now would only fail again, so wait for `restart()`.
+        case suspended
     }
 
     var onUnlock: (() -> Void)?
@@ -47,6 +50,7 @@ final class Authenticator {
     private var context: LAContext?
     private var attempt = 0
     private var running = false
+    private var suspended = false
     private var reason = ""
 
     /// Arms Touch ID and keeps re-arming after non-fatal outcomes.
@@ -60,7 +64,14 @@ final class Authenticator {
     /// lost the focus to someone else (another app, sleep, the system lock screen):
     /// such an evaluation stays pending with the sensor dead and never ends itself.
     func restart() {
-        guard running, isEvaluating else { return }
+        guard running else { return }
+        if suspended {
+            debugLog("biometrics: resuming after the system lock screen")
+            suspended = false
+            arm()
+            return
+        }
+        guard isEvaluating else { return }
         debugLog("biometrics #\(attempt): restarting stuck evaluation")
         attempt += 1
         isEvaluating = false
@@ -73,6 +84,7 @@ final class Authenticator {
     /// Ends the current evaluation; used when the lockdown itself is ending.
     func stop() {
         running = false
+        suspended = false
         isEvaluating = false
         attempt += 1
         context?.invalidate()
@@ -113,6 +125,8 @@ final class Authenticator {
                 switch status {
                 case .lockedOut, .unavailable:
                     return
+                case .suspended:
+                    self.suspended = true
                 case .armed, .retrying:
                     // The context is spent; re-arm so a later touch still unlocks.
                     self.scheduleRearm()
@@ -136,6 +150,8 @@ final class Authenticator {
         switch error.code {
         case LAError.biometryLockout.rawValue:
             return .lockedOut
+        case LAError.notInteractive.rawValue:
+            return .suspended
         case LAError.biometryNotAvailable.rawValue,
              LAError.biometryNotEnrolled.rawValue,
              LAError.passcodeNotSet.rawValue:
