@@ -39,6 +39,9 @@ agent out and re-enabling it afterwards. `~/lockr-debug/src` is a worktree of th
 branch. Signing over ssh fails (locked keychain); `~/lockr-debug/sign.plist` signs
 inside the GUI session instead.
 
-Installed 2026-11-25 12:30 WITA: the branch build replaced `/Applications/Lockr.app`
-on the Mac (not a release; Homebrew still thinks 1.2.1). Backup of 1.2.1 in
-`~/lockr-debug/Lockr-1.2.1.app`. The next cask upgrade overwrites it.
+Released 2026-11-25 as 1.2.2 (build 6): notarized, GitHub release v1.2.2, cask
+bumped in merlinkraemer/homebrew-tap, installed on the Mac via `brew upgrade`.
+Notarization uses the `bounce-notary` keychain profile. Codesign and notarytool
+need the unlocked login keychain, so over ssh they run as a GUI-session launchd job
+(`~/lockr-debug/gui.sh <tag> <cmd>`). gh is not installed on the Mac; tag, release
+and cask push were done from dev.
