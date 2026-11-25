@@ -38,3 +38,7 @@ test lock as a GUI-session launchd job with stderr in `~/lockr-debug/`, booting 
 agent out and re-enabling it afterwards. `~/lockr-debug/src` is a worktree of the
 branch. Signing over ssh fails (locked keychain); `~/lockr-debug/sign.plist` signs
 inside the GUI session instead.
+
+Installed 2026-11-25 12:30 WITA: the branch build replaced `/Applications/Lockr.app`
+on the Mac (not a release; Homebrew still thinks 1.2.1). Backup of 1.2.1 in
+`~/lockr-debug/Lockr-1.2.1.app`. The next cask upgrade overwrites it.
