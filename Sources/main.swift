@@ -1,8 +1,13 @@
 import AppKit
+import os
 
-/// Minimal trace output, visible when the binary is started from a shell.
+private let traceLog = Logger(subsystem: "com.merlinkraemer.lockr", category: "lock")
+
+/// Trace output on stderr and in the unified log, so the login agent's copy leaves
+/// a trail too: `log show --predicate 'subsystem == "com.merlinkraemer.lockr"'`.
 func debugLog(_ message: String) {
     FileHandle.standardError.write(Data("[lockr] \(message)\n".utf8))
+    traceLog.notice("\(message, privacy: .public)")
 }
 
 let usage = """

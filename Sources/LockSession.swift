@@ -183,9 +183,10 @@ final class LockSession {
     }
 
     /// A pending evaluation dies silently once its panel loses the focus (see
-    /// `activateIfNeeded`), so restart it whenever that may have happened: another
-    /// app holds the focus for a couple of seconds, or the Mac comes back from
-    /// sleep or the system lock screen.
+    /// `activateIfNeeded`), so restart it whenever that may have happened: anyone
+    /// but the panel holds the focus for a few seconds - another app, or Lockr
+    /// itself when the panel lost the focus to the curtain or never got it (seen
+    /// after a reboot) - or the Mac comes back from sleep or the system lock screen.
     private func watchBiometricFocus() {
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             guard let self, self.authenticator.isEvaluating else {
@@ -193,9 +194,8 @@ final class LockSession {
                 return
             }
             let frontmost = NSWorkspace.shared.frontmostApplication
-            let foreign = frontmost?.processIdentifier != getpid() && !self.authPanelIsFrontmost
-            self.foreignFocusTicks = foreign ? self.foreignFocusTicks + 1 : 0
-            if self.foreignFocusTicks >= 2 {
+            self.foreignFocusTicks = self.authPanelIsFrontmost ? 0 : self.foreignFocusTicks + 1
+            if self.foreignFocusTicks >= 3 {
                 debugLog("focus held by \(frontmost?.bundleIdentifier ?? "?") during Touch ID")
                 self.foreignFocusTicks = 0
                 self.authenticator.restart()
